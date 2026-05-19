@@ -1,0 +1,242 @@
+generator client {
+  provider = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-arm64-openssl-3.0.x"]
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  CONDOMINO
+}
+
+enum PaymentStatus {
+  PENDENTE
+  PAGO
+  ATRASADO
+}
+
+enum ExpenseCategory {
+  EDP
+  LIMPEZA
+  JARDINAGEM
+  ASSISTENCIA_TECNICA
+  DESPESAS_ADMINISTRATIVAS
+  DESPESAS_BANCARIAS
+  FUNDO_RESERVA
+  OUTROS
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  password      String
+  role          UserRole  @default(CONDOMINO)
+  fracaoId      String?   @unique
+  fracao        Fracao?   @relation(fields: [fracaoId], references: [id])
+  passwordResetTokens PasswordResetToken[]
+  telefone      String?
+  morada        String?
+  mustChangePassword Boolean  @default(false)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model PasswordResetToken {
+  id          String   @id @default(cuid())
+  tokenHash   String   @unique
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+
+
+model Fracao {
+  id            String    @id @default(cuid())
+  letra         String    @unique
+  permilagem    Int
+  descricao     String?
+  proprietario  String?
+  user          User?
+  cotas         Cota[]
+  pagamentos    Pagamento[]
+  dividas       DividaTransitada[]
+  cotasExtras   CotaExtraordinaria[]
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model Cota {
+  id            String        @id @default(cuid())
+  fracaoId      String
+  fracao        Fracao        @relation(fields: [fracaoId], references: [id])
+  ano           Int
+  mes           Int
+  valorOrcamento Decimal      @db.Decimal(10, 2)
+  valorFundoReserva Decimal   @db.Decimal(10, 2)
+  valorTotal    Decimal       @db.Decimal(10, 2)
+  status        PaymentStatus @default(PENDENTE)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@unique([fracaoId, ano, mes])
+}
+
+model Pagamento {
+  id              String    @id @default(cuid())
+  fracaoId        String
+  fracao          Fracao    @relation(fields: [fracaoId], references: [id])
+  cotaId          String?
+  cotaExtraId     String?
+  dividaTransitadaId String?
+  dividaTransitada DividaTransitada? @relation(fields: [dividaTransitadaId], references: [id])
+  valor           Decimal   @db.Decimal(10, 2)
+  dataPagamento   DateTime
+  metodoPagamento String    @default("Transferência")
+  referencia      String?
+  observacoes     String?
+  numeroRecibo    String?
+  reciboGerado    Boolean   @default(false)
+  reciboUrl       String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+}
+
+model Despesa {
+  id            String          @id @default(cuid())
+  descricao     String
+  categoria     ExpenseCategory
+  valor         Decimal         @db.Decimal(10, 2)
+  dataEmissao   DateTime
+  dataPagamento DateTime?
+  fornecedor    String?
+  numeroFatura  String?
+  paga          Boolean         @default(false)
+  metodoPagamento String?
+  numeroDocumento String?
+  observacoes   String?
+  ano           Int
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+model SaldoTransitado {
+  id                String   @id @default(cuid())
+  ano               Int
+  saldoContaCorrente Decimal @db.Decimal(10, 2) @default(0)
+  saldoFundoReserva  Decimal @db.Decimal(10, 2) @default(0)
+  observacoes       String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([ano])
+}
+
+model DividaTransitada {
+  id            String       @id @default(cuid())
+  fracaoId      String
+  fracao        Fracao       @relation(fields: [fracaoId], references: [id])
+  tipo          TipoDivida   @default(COTAS)
+  descricao     String
+  valor         Decimal      @db.Decimal(10, 2)
+  anoReferencia Int
+  liquidada     Boolean      @default(false)
+  dataLiquidacao DateTime?
+  observacoes   String?
+  pagamentos    Pagamento[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+}
+
+enum TipoDivida {
+  COTAS
+  OBRAS
+}
+
+enum TipoMovimento {
+  LEVANTAMENTO
+  DEPOSITO
+}
+
+model MovimentoCaixa {
+  id          String         @id @default(cuid())
+  tipo        TipoMovimento
+  valor       Decimal        @db.Decimal(10, 2)
+  data        DateTime
+  descricao   String?
+  observacoes String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([data(sort: Desc)])
+}
+
+model Orcamento {
+  id            String          @id @default(cuid())
+  ano           Int             @unique
+  designacao    String
+  valorEDP      Decimal         @db.Decimal(10, 2) @default(0)
+  valorLimpeza  Decimal         @db.Decimal(10, 2) @default(0)
+  valorJardinagem Decimal       @db.Decimal(10, 2) @default(0)
+  valorAssistencia Decimal      @db.Decimal(10, 2) @default(0)
+  valorAdministrativas Decimal  @db.Decimal(10, 2) @default(0)
+  valorBancarias Decimal        @db.Decimal(10, 2) @default(0)
+  subtotal      Decimal         @db.Decimal(10, 2)
+  fundoReserva  Decimal         @db.Decimal(10, 2)
+  total         Decimal         @db.Decimal(10, 2)
+  aprovado      Boolean         @default(false)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+}
+
+model OrcamentoExtraordinario {
+  id                String   @id @default(cuid())
+  descricao         String
+  valorTotal        Decimal  @db.Decimal(10, 2)
+  percentagemFR     Decimal  @db.Decimal(5, 2) @default(0)
+  ano               Int
+  aprovado          Boolean  @default(false)
+  observacoes       String?
+  cotas             CotaExtraordinaria[]
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model CotaExtraordinaria {
+  id                    String   @id @default(cuid())
+  orcamentoExtraId      String
+  orcamentoExtra        OrcamentoExtraordinario @relation(fields: [orcamentoExtraId], references: [id], onDelete: Cascade)
+  fracaoId              String
+  fracao                Fracao   @relation(fields: [fracaoId], references: [id])
+  valorTotal            Decimal  @db.Decimal(10, 2)
+  valorCC               Decimal  @db.Decimal(10, 2)
+  valorFR               Decimal  @db.Decimal(10, 2)
+  pago                  Boolean  @default(false)
+  dataPagamento         DateTime?
+  observacoes           String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([orcamentoExtraId, fracaoId])
+}
+
+model Nota {
+  id        String   @id @default(cuid())
+  data      DateTime
+  texto     String   @db.VarChar(256)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([data(sort: Desc)])
+}
