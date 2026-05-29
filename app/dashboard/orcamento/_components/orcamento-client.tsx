@@ -126,7 +126,7 @@ export function OrcamentoClient() {
                           dataKey="value"
                         >
                           {(chartData ?? []).map((_: any, index: number) => (
-                            <Cell key={index} fill={COLORS[index % COLORS?.length ?? 1]} />
+                            <Cell key={index} fill={COLORS[index % COLORS?.length]} />
                           ))}
                         </Pie>
                         <Tooltip formatter={(value: any) => formatCurrency(Number(value ?? 0))} contentStyle={{ fontSize: 11 }} />
@@ -155,7 +155,7 @@ export function OrcamentoClient() {
                     ].map((item: any, idx: number) => (
                       <div key={idx} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
                         <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS?.length ?? 1] }} />
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: COLORS[idx % COLORS?.length] }} />
                           <span className="text-sm">{item?.label ?? ''}</span>
                         </div>
                         <span className="font-mono text-sm font-semibold">{formatCurrency(item?.value)}</span>

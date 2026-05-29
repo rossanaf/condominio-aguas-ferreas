@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -82,43 +82,6 @@ export function DashboardClient() {
           </p>
         </div>
       </FadeIn>
-
-      {/* Alerta dedicado a "Outras Dívidas" pendentes — apenas para admin */}
-      {isAdmin && (data?.outrasDividasCount ?? 0) > 0 && (
-        <FadeIn delay={0.05}>
-          <Card
-            className="border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 dark:border-amber-900/40"
-            style={{ boxShadow: 'var(--shadow-sm)' }}
-          >
-            <CardContent className="p-5">
-              <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:justify-between">
-                <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <FileWarning className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm text-amber-900 dark:text-amber-200">
-                      Outras Dívidas Pendentes
-                    </p>
-                    <p className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-0.5">
-                      {(data?.outrasDividasCount ?? 0) === 1
-                        ? '1 dívida em atraso'
-                        : `${data?.outrasDividasCount ?? 0} dívidas em atraso`}
-                      {' — '}
-                      <span className="font-mono font-semibold">{formatCurrency(data?.outrasDividasTotal)}</span>
-                    </p>
-                  </div>
-                </div>
-                <Button asChild variant="outline" size="sm" className="border-amber-300 hover:bg-amber-100/50 dark:border-amber-800 dark:hover:bg-amber-900/30">
-                  <Link href="/dashboard/transitados">
-                    Ver detalhes <ArrowRight className="h-4 w-4 ml-1" />
-                  </Link>
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </FadeIn>
-      )}
 
       {/* Card de destaque "Conta Corrente Fração" para condóminos */}
       {!isAdmin && statCards.length > 0 && (() => {
@@ -204,7 +167,7 @@ export function DashboardClient() {
         })}
       </div>
 
-      {isAdmin && (data?.cotasPagas ?? 0) + (data?.cotasPendentes ?? 0) > 0 && (
+      {/* {isAdmin && (data?.cotasPagas ?? 0) + (data?.cotasPendentes ?? 0) > 0 && (
         <FadeIn delay={0.3}>
           <Card style={{ boxShadow: 'var(--shadow-sm)' }}>
             <CardHeader className="pb-3">
@@ -238,7 +201,7 @@ export function DashboardClient() {
             </CardContent>
           </Card>
         </FadeIn>
-      )}
+      )} */}
 
       {isAdmin && (
         <FadeIn delay={0.35}>
@@ -248,9 +211,14 @@ export function DashboardClient() {
                 <Landmark className="h-4 w-4 text-primary" />
                 Resumo Financeiro
               </CardTitle>
-
             </CardHeader>
-            <CardContent>
+            <CardContent className='space-y-4'>
+              <div>
+                <p className="leading-tight">
+                  <span className="block font-medium">Ano Corrente</span>
+                  <span className="block text-xs text-muted-foreground">2026</span>
+                </p>
+              </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="flex items-center gap-3 p-3 bg-muted/50 rounded-lg">
                   <Wallet className="h-5 w-5 text-primary" />
@@ -282,36 +250,92 @@ export function DashboardClient() {
                 </div>
               </div>
               {(data?.saldoTransitado || data?.dividasPendentesTotal > 0) && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-4 pt-4 border-t border-border/50">
-                  {data?.saldoTransitado && (
-                    <>
-                      <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
-                        <Landmark className="h-5 w-5 text-blue-600" />
+                <div className="space-y-4 mt-4 pt-4 border-t border-border/50">
+                  <div>
+                    <p className="leading-tight">
+                      <span className="block">Anos Anteriores</span>
+                      <span className="block text-xs text-muted-foreground">
+                        Até {new Date().getFullYear() - 1}
+                      </span>
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    {data?.saldoTransitado && (
+                      <>
+                        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                          <Landmark className="h-5 w-5 text-blue-600" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Transitado CC</p>
+                            <p className="font-mono font-semibold text-sm">
+                              {formatCurrency(data?.saldoTransitado?.saldoContaCorrente)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
+                          <Landmark className="h-5 w-5 text-blue-600" />
+                          <div>
+                            <p className="text-xs text-muted-foreground">Transitado FR</p>
+                            <p className="font-mono font-semibold text-sm">
+                              {formatCurrency(data?.saldoTransitado?.saldoFundoReserva)}
+                            </p>
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {data?.dividasPendentesTotal > 0 && (
+                      <div className="flex items-center gap-3 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
+                        <ShieldAlert className="h-5 w-5 text-red-600" />
                         <div>
-                          <p className="text-xs text-muted-foreground">Transitado CC</p>
-                          <p className="font-mono font-semibold text-sm">{formatCurrency(data?.saldoTransitado?.saldoContaCorrente)}</p>
+                          <p className="text-xs text-muted-foreground">Dívidas Pendentes</p>
+                          <p className="font-mono font-semibold text-sm text-red-600">
+                            {formatCurrency(data?.dividasPendentesTotal)}
+                          </p>
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg">
-                        <Landmark className="h-5 w-5 text-blue-600" />
-                        <div>
-                          <p className="text-xs text-muted-foreground">Transitado FR</p>
-                          <p className="font-mono font-semibold text-sm">{formatCurrency(data?.saldoTransitado?.saldoFundoReserva)}</p>
-                        </div>
-                      </div>
-                    </>
-                  )}
-                  {data?.dividasPendentesTotal > 0 && (
-                    <div className="flex items-center gap-3 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
-                      <ShieldAlert className="h-5 w-5 text-red-500" />
-                      <div>
-                        <p className="text-xs text-muted-foreground">Dívidas Pendentes</p>
-                        <p className="font-mono font-semibold text-sm text-red-500">{formatCurrency(data?.dividasPendentesTotal)}</p>
-                      </div>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </FadeIn>
+      )}
+
+      {/* Alerta dedicado a "Outras Dívidas" pendentes — apenas para admin */}
+      {isAdmin && (data?.outrasDividasCount ?? 0) > 0 && (
+        <FadeIn delay={0.05}>
+          <Card
+            className="border-amber-200 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 dark:border-amber-900/40"
+            style={{ boxShadow: 'var(--shadow-sm)' }}
+          >
+            <CardContent className="p-5">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-4 sm:justify-between">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-amber-100 dark:bg-amber-900/40 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <FileWarning className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm text-amber-900 dark:text-amber-200">
+                      Outras Dívidas Pendentes
+                    </p>
+                    <p className="text-xs text-amber-800/80 dark:text-amber-200/80 mt-0.5">
+                      {(data?.outrasDividasCount ?? 0) === 1
+                        ? '1 dívida em atraso'
+                        : `${data?.outrasDividasCount ?? 0} dívidas em atraso`}
+                      {' — '}
+                      <span className="font-mono font-semibold">{formatCurrency(data?.outrasDividasTotal)}</span>
+                    </p>
+                  </div>
+                </div>
+                <Button asChild variant="outline" size="sm" className="border-amber-300 hover:bg-amber-100/50 dark:border-amber-800 dark:hover:bg-amber-900/30">
+                  <Link href="/dashboard/transitados">
+                    Ver detalhes <ArrowRight className="h-4 w-4 ml-1" />
+                  </Link>
+                </Button>
+              </div>
             </CardContent>
           </Card>
         </FadeIn>

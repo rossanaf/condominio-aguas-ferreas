@@ -5,13 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { FadeIn } from '@/components/ui/animate';
 import { BarChart3, Info } from 'lucide-react';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+// import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, Legend } from 'recharts';
+import { PieChart, Pie, Cell, Tooltip } from 'recharts';
 
 function formatCurrency(val: number | null | undefined): string {
   return (val ?? 0)?.toLocaleString?.('pt-PT', { style: 'currency', currency: 'EUR' }) ?? '0,00 €';
 }
-
-const mesesNomes = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
 
 export function RelatoriosClient() {
   const [pagamentos, setPagamentos] = useState<any[]>([]);
@@ -20,6 +19,9 @@ export function RelatoriosClient() {
   const [despesas, setDespesas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [ano, setAno] = useState(String(new Date().getFullYear()));
+  const [orcamento, setOrcamento] = useState<any | null>(null);
+  const ANO_INICIAL = 2026;
+  const anoAtual = new Date().getFullYear();
 
   useEffect(() => {
     setLoading(true);
@@ -28,71 +30,263 @@ export function RelatoriosClient() {
       fetch(`/api/cotas?ano=${ano}`).then(r => r?.json?.()),
       fetch(`/api/outras-dividas`).then(r => r?.json?.()).catch(() => []),
       fetch(`/api/despesas?ano=${ano}`).then(r => r?.json?.()),
+      fetch(`/api/orcamento?ano=${ano}`).then(r => r?.json?.()).catch(() => null),
     ])
-      .then(([p, c, od, d]: any) => {
+      .then(([p, c, od, d, o]: any) => {
         setPagamentos(Array.isArray(p) ? p : []);
         setCotas(Array.isArray(c) ? c : []);
         setOutrasDividas(Array.isArray(od) ? od : []);
         setDespesas(Array.isArray(d) ? d : []);
+        setOrcamento(o ?? null);
       })
       .catch((err: any) => console.error(err))
       .finally(() => setLoading(false));
   }, [ano]);
+  
+  // Carrega lista de anos, a partir de 2026
+  const anos = Array.from(
+    { length: anoAtual - ANO_INICIAL + 1 },
+    (_, i) => String(ANO_INICIAL + i)
+  ).reverse();
 
-  // Monthly chart — usa a data de pagamento real (aceita pagamentos de 2026 para dívidas de 2025)
-  const monthlyData = mesesNomes.map((nome: string, idx: number) => {
-    const mes = idx;
-    const receitasMes = (pagamentos ?? [])
-      .filter((p: any) => {
-        if (!p?.dataPagamento) return false;
-        const dt = new Date(p.dataPagamento);
-        return dt?.getMonth?.() === mes;
-      })
-      .reduce((acc: number, p: any) => acc + Number(p?.valor ?? 0), 0);
-    const despesasMes = (despesas ?? []).filter((d: any) => {
-      const m = new Date(d?.dataEmissao ?? '')?.getMonth?.();
-      return m === idx;
-    }).reduce((acc: number, d: any) => acc + Number(d?.valor ?? 0), 0);
-    return { name: nome, Receitas: Number(receitasMes?.toFixed?.(2) ?? 0), Despesas: Number(despesasMes?.toFixed?.(2) ?? 0) };
-  });
-
-  // Per-fração chart: Pago = tudo efectivamente pago no ano (cotas + dívidas transitadas + extra).
-  // Pendente = cotas do ano por pagar + dívidas transitadas (COTAS e OBRAS) + cotas extra por pagar.
-  const fracaoAgg: Record<string, { pago: number; pendente: number }> = {};
-
-  // Soma de pagos por fração (inclui tudo o que foi pago no ano, mesmo que seja dívida transitada de anos anteriores)
-  for (const p of (pagamentos ?? [])) {
-    const letra = p?.fracao?.letra ?? 'N/A';
-    if (!fracaoAgg[letra]) fracaoAgg[letra] = { pago: 0, pendente: 0 };
-    fracaoAgg[letra].pago += Number(p?.valor ?? 0);
-  }
-
-  // Pendente: cotas (regulares + dividas transitadas COTAS sintéticas devolvidas por /api/cotas) não-PAGO
-  for (const c of (cotas ?? [])) {
-    if (c?.status === 'PAGO') continue;
-    const letra = c?.fracao?.letra ?? 'N/A';
-    if (!fracaoAgg[letra]) fracaoAgg[letra] = { pago: 0, pendente: 0 };
-    fracaoAgg[letra].pendente += Number(c?.valorTotal ?? 0);
-  }
-
-  // Pendente: dívidas transitadas OBRAS (outros) não liquidadas
-  for (const od of (outrasDividas ?? [])) {
-    if (od?.liquidada) continue;
-    const letra = od?.fracao?.letra ?? 'N/A';
-    if (!fracaoAgg[letra]) fracaoAgg[letra] = { pago: 0, pendente: 0 };
-    fracaoAgg[letra].pendente += Number(od?.valor ?? 0);
-  }
-
-  const fracaoData = Object.entries(fracaoAgg)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([letra, vals]: any) => ({
-      name: `Fr. ${letra}`,
-      Pago: Number((vals?.pago ?? 0)?.toFixed?.(2) ?? 0),
-      Pendente: Number((vals?.pendente ?? 0)?.toFixed?.(2) ?? 0),
-    }));
-
+  // Criar resumo por rubrica de despesa, ano corrente
   const totalReceitas = (pagamentos ?? []).reduce((acc: number, p: any) => acc + Number(p?.valor ?? 0), 0);
   const totalDespesas = (despesas ?? []).reduce((acc: number, d: any) => acc + Number(d?.valor ?? 0), 0);
+  
+  function normalizarCategoria(categoria: string) {
+    if (!categoria) {
+      console.warn("Despesa sem categoria:", categoria);
+      return null;
+    }
+
+    const t = categoria.trim().toUpperCase();
+
+    if (t.includes("EDP")) return "EDP";
+    if (t.includes("LIMPEZA")) return "Limpeza";
+    if (t.includes("JARDIN")) return "Jardinagem";
+    if (t.includes("ASSIST")) return "Assistência Técnica";
+    if (t.includes("ADMIN")) return "Despesas Administrativas";
+    if (t.includes("BANC")) return "Despesas Bancárias";
+    console.warn("Categoria não mapeada:", categoria);
+    return null;
+  }
+
+  const resumoDespesas: Record<string, number> = {};
+
+  for (const d of despesas ?? []) {
+    if (!d?.paga) continue;
+
+    const categoria = normalizarCategoria(d?.categoria);
+
+    if (!categoria) continue; // 👈 ignora inválidos
+
+    if (!resumoDespesas[categoria]) {
+      resumoDespesas[categoria] = 0;
+    }
+
+    resumoDespesas[categoria] += Number(d?.valor ?? 0);
+  }
+
+
+  const chartData = Object.entries(resumoDespesas)
+    .map(([name, value]) => ({
+      name,
+      value: Number(value.toFixed(2))
+    }))
+    .filter(d => d.value > 0);
+
+  // Despesas - componente gráfica
+  const CORES_RUBRICAS: Record<string, string> = {
+    "EDP": "#60B5FF",
+    "Limpeza": "#FF9149",
+    "Jardinagem": "#FF9898",
+    "Assistência Técnica": "#80D8C3",
+    "Despesas Administrativas": "#A19AD3",
+    "Despesas Bancárias": "#FF6363"
+  };
+
+  function GraficoDespesas({ data }: { data: any[] }) {
+    return (
+      <PieChart width={300} height={300}>
+        <Pie
+          data={chartData}
+          cx="50%"
+          cy="50%"
+          innerRadius={60}
+          outerRadius={100}
+          paddingAngle={3}
+          dataKey="value"
+        >
+          {chartData.map((entry, index) => (
+            <Cell
+              key={index}
+              fill={CORES_RUBRICAS[entry.name]}
+            />
+          ))}
+        </Pie>
+        <Tooltip formatter={(value: number) => formatCurrency(value)} />
+      </PieChart>
+    );
+  }
+  
+  // Despesas - criar tabela lateral
+  const ORDEM = [
+    "EDP",
+    "Limpeza",
+    "Jardinagem",
+    "Assistência Técnica",
+    "Despesas Administrativas",
+    "Despesas Bancárias"
+  ];
+
+  function normalizarChave(texto: string) {
+    return texto
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // remove acentos
+      .toUpperCase()
+      .trim();
+  }
+
+  const detalheDespesas = ORDEM.map((nome) => ({
+    label: nome,
+    value: resumoDespesas[nome] || 0
+  })).filter(d => d.value > 0);
+
+  const subtotalDespesas = detalheDespesas.reduce(
+    (acc, item) => acc + item.value,
+    0
+  );
+
+  function DetalheDespesas({ data }: { data: any[] }) {
+    const subtotal = data.reduce((acc, item) => acc + item.value, 0);
+    return (
+      <div className="space-y-2">
+        {data.map((item: any, idx: number) => (
+          <div key={idx} className="flex items-center justify-between py-2 border-b border-border/50 last:border-0">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-3 h-3 rounded-full"
+                style={{
+                  backgroundColor: CORES_RUBRICAS[item.label]
+                }}
+              />
+              <span className="text-sm">{item.label}</span>
+            </div>
+            <span className="font-mono text-sm font-semibold">
+              {formatCurrency(item.value)}
+            </span>
+          </div>
+        ))}
+        <div className="pt-2 border-t border-border">
+          <div className="flex justify-between">
+            <span className="text-sm font-semibold">Subtotal</span>
+            <span className="font-mono text-sm font-bold">
+              {formatCurrency(subtotal)}
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Comparativo Orçamento
+  const orcamentoPorCategoria: Record<string, number> = {
+    "EDP": Number(orcamento?.valorEDP ?? 0),
+    "Limpeza": Number(orcamento?.valorLimpeza ?? 0),
+    "Jardinagem": Number(orcamento?.valorJardinagem ?? 0),
+    "Assistência Técnica": Number(orcamento?.valorAssistencia ?? 0),
+    "Despesas Administrativas": Number(orcamento?.valorAdministrativas ?? 0),
+    "Despesas Bancárias": Number(orcamento?.valorBancarias ?? 0),
+  };
+
+  const COMPARATIVO_ORDEM = [
+    "EDP",
+    "Limpeza",
+    "Jardinagem",
+    "Assistência Técnica",
+    "Despesas Administrativas",
+    "Despesas Bancárias"
+  ];
+
+  const comparativoDespesas = COMPARATIVO_ORDEM.map((categoria) => {
+    const orcado = Number(orcamentoPorCategoria[categoria] ?? 0);
+    const real = Number(resumoDespesas[categoria] ?? 0);
+    const diferenca = real - orcado;
+    const execucaoPercent =
+      orcado > 0 ? (real / orcado) * 100 : 0;
+
+    return {
+      categoria,
+      orcado: Number(orcado.toFixed(2)),
+      real: Number(real.toFixed(2)),
+      diferenca: Number(diferenca.toFixed(2)),
+      execucaoPercent: Number(execucaoPercent.toFixed(1)),
+    };
+  });
+
+  function getDiferencaClass(value: number) {
+    if (value > 0) return "text-red-600";
+    if (value < 0) return "text-green-600";
+    return "text-muted-foreground";
+  }
+
+  function TabelaComparativo({ data }: { data: any[] }) {
+    const totalOrcado = data.reduce((acc, item) => acc + item.orcado, 0);
+    const totalReal = data.reduce((acc, item) => acc + item.real, 0);
+    const totalDiferenca = totalReal - totalOrcado;
+    const totalExecucao = totalOrcado > 0 ? (totalReal / totalOrcado) * 100 : 0;
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="text-left py-2 font-semibold">Rubrica</th>
+              <th className="text-right py-2 font-semibold">Orçamento</th>
+              <th className="text-right py-2 font-semibold">Real</th>
+              <th className="text-right py-2 font-semibold">Diferença</th>
+              <th className="text-right py-2 font-semibold">Execução</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.map((item, idx) => (
+              <tr key={idx} className="border-b border-border/50">
+                <td className="py-2">{item.categoria}</td>
+                <td className="py-2 text-right font-mono">
+                  {formatCurrency(item.orcado)}
+                </td>
+                <td className="py-2 text-right font-mono">
+                  {formatCurrency(item.real)}
+                </td>
+                <td className={`py-2 text-right font-mono ${getDiferencaClass(item.diferenca)}`}>
+                  {formatCurrency(item.diferenca)}
+                </td>
+                <td className="py-2 text-right font-mono">
+                  {item.execucaoPercent.toFixed(1)}%
+                </td>
+              </tr>
+            ))}
+
+            <tr className="border-t border-border font-semibold">
+              <td className="py-3">Total</td>
+              <td className="py-3 text-right font-mono">
+                {formatCurrency(totalOrcado)}
+              </td>
+              <td className="py-3 text-right font-mono">
+                {formatCurrency(totalReal)}
+              </td>
+              <td className={`py-3 text-right font-mono ${getDiferencaClass(totalDiferenca)}`}>
+                {formatCurrency(totalDiferenca)}
+              </td>
+              <td className="py-3 text-right font-mono">
+                {totalExecucao.toFixed(1)}%
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -100,105 +294,49 @@ export function RelatoriosClient() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h1 className="font-display text-2xl tracking-tight font-bold">Relatórios</h1>
-            <p className="text-muted-foreground text-sm mt-1">Análise financeira do condomínio</p>
+            <p className="text-muted-foreground text-sm mt-1">.............................</p>
           </div>
           <Select value={ano} onValueChange={setAno}>
-            <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
-            <SelectContent><SelectItem value="2026">2026</SelectItem><SelectItem value="2025">2025</SelectItem></SelectContent>
+            <SelectTrigger className="w-[120px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {anos.map((anoItem) => (
+                <SelectItem key={anoItem} value={anoItem}>
+                  {anoItem}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         </div>
       </FadeIn>
-
-      <FadeIn delay={0.05}>
-        <Card className="border-blue-200/60 bg-blue-50/40 dark:bg-blue-950/20 dark:border-blue-900/40" style={{ boxShadow: 'var(--shadow-sm)' }}>
-          <CardContent className="p-3 flex items-start gap-2.5">
-            <Info className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-            <p className="text-xs text-blue-900/80 dark:text-blue-200/90 leading-relaxed">
-              Os valores de <strong>Receitas</strong> e <strong>Pago</strong> incluem <strong>tudo o que foi efetivamente pago em {ano}</strong>,
-              mesmo quando se referem a cotas ou dívidas transitadas de anos anteriores (usamos a data de pagamento).
-            </p>
-          </CardContent>
-        </Card>
-      </FadeIn>
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card style={{ boxShadow: 'var(--shadow-sm)' }}>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Total Receitas</p>
-            <p className="text-lg font-bold font-mono text-emerald-600">{formatCurrency(totalReceitas)}</p>
-          </CardContent>
-        </Card>
-        <Card style={{ boxShadow: 'var(--shadow-sm)' }}>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Total Despesas</p>
-            <p className="text-lg font-bold font-mono text-red-500">{formatCurrency(totalDespesas)}</p>
-          </CardContent>
-        </Card>
-        <Card style={{ boxShadow: 'var(--shadow-sm)' }}>
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Saldo</p>
-            <p className={`text-lg font-bold font-mono ${(totalReceitas - totalDespesas) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-              {formatCurrency(totalReceitas - totalDespesas)}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {loading ? (
-        <div className="h-64 animate-pulse bg-muted rounded-lg" />
-      ) : (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <FadeIn delay={0.2}>
-            <Card style={{ boxShadow: 'var(--shadow-sm)' }}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-primary" />
-                  Receitas vs Despesas Mensais
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={monthlyData} margin={{ bottom: 20, left: 10 }}>
-                      <XAxis dataKey="name" tickLine={false} tick={{ fontSize: 10 }} />
-                      <YAxis tickLine={false} tick={{ fontSize: 10 }} />
-                      <Tooltip contentStyle={{ fontSize: 11 }} formatter={(v: any) => formatCurrency(Number(v ?? 0))} />
-                      <Legend verticalAlign="top" wrapperStyle={{ fontSize: 11 }} />
-                      <Bar dataKey="Receitas" fill="#80D8C3" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="Despesas" fill="#FF9898" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </FadeIn>
-
-          <FadeIn delay={0.3}>
-            <Card style={{ boxShadow: 'var(--shadow-sm)' }}>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-primary" />
-                  Cotas por Fração
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={fracaoData} margin={{ bottom: 20, left: 10 }}>
-                      <XAxis dataKey="name" tickLine={false} tick={{ fontSize: 10 }} />
-                      <YAxis tickLine={false} tick={{ fontSize: 10 }} />
-                      <Tooltip contentStyle={{ fontSize: 11 }} formatter={(v: any) => formatCurrency(Number(v ?? 0))} />
-                      <Legend verticalAlign="top" wrapperStyle={{ fontSize: 11 }} />
-                      <Bar dataKey="Pago" stackId="a" fill="#80D8C3" radius={[0, 0, 0, 0]} />
-                      <Bar dataKey="Pendente" stackId="a" fill="#FF9149" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card>
-          </FadeIn>
-        </div>
-      )}
+      <Card>
+        <CardHeader>
+          <CardTitle>Distribuição de Despesas</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p>A carregar...</p>
+          ) : (
+            <div className="grid md:grid-cols-2 gap-6 items-center">
+              <GraficoDespesas data={chartData} />
+              <DetalheDespesas data={detalheDespesas} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
+      <Card>
+        <CardHeader>
+          <CardTitle>Comparação Orçamento vs Real</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <p>A carregar...</p>
+          ) : (
+            <TabelaComparativo data={comparativoDespesas} />
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 }
