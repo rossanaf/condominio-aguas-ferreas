@@ -54,10 +54,11 @@ export function DashboardClient() {
   const isAdmin = data?.isAdmin ?? false;
 
   const statCards = isAdmin ? [
-    { label: 'Total Receitas', value: formatCurrency(data?.totalReceitas), icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
-    { label: 'Total Despesas', value: formatCurrency(data?.totalDespesas), icon: TrendingDown, color: 'text-red-500', bg: 'bg-red-50' },
     { label: 'Saldo Conta Corrente', value: formatCurrency(data?.saldoContaCorrente), icon: Wallet, color: 'text-primary', bg: 'bg-primary/10' },
     { label: 'Saldo Fundo Reserva', value: formatCurrency(data?.saldoFundoReserva), icon: Landmark, color: 'text-emerald-700', bg: 'bg-emerald-50' },
+    { label: 'Total Receitas', value: formatCurrency(data?.totalReceitas), icon: TrendingUp, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+    { label: 'Despesas pagas', value: formatCurrency(data?.totalDespesasPagas ?? 0), icon: TrendingUp, bg: 'bg-red-50', color: 'text-red-600' },
+    { label: 'Despesas pendentes', value: formatCurrency(data?.totalDespesasPendentes ?? 0), icon: AlertTriangle, bg: 'bg-amber-50', color: 'text-amber-600' },
   ] : (() => {
     const totalPendenteFracao = (data?.cotasPendentesValor ?? 0) + (data?.outrasDividasPendentesValor ?? 0);
     return [
@@ -179,7 +180,8 @@ export function DashboardClient() {
         </FadeIn>
       )}
 
-      <div className={`grid grid-cols-1 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-4`}>
+      {/* Primeira linha de Cards: Total Receitas, Total despesas, Saldo CC, Saldo FCR */}
+      <div className={`grid grid-cols-1 sm:grid-cols-2 ${isAdmin ? 'lg:grid-cols-5' : 'lg:grid-cols-3'} gap-4`}>
         {(isAdmin ? statCards : statCards.filter((c: any) => !c?.isHero)).map((card: any, i: number) => {
           const Icon = card?.icon;
           return (
@@ -246,6 +248,7 @@ export function DashboardClient() {
                 <Landmark className="h-4 w-4 text-primary" />
                 Resumo Financeiro
               </CardTitle>
+
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

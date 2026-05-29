@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,7 @@ function formatCurrency(val: number | null | undefined): string {
 
 export function TransitadosClient() {
   const currentYear = new Date().getFullYear();
-  const [ano, setAno] = useState(currentYear);
+  const ano = currentYear;
   const [saldo, setSaldo] = useState<any>(null);
   const [dividas, setDividas] = useState<any[]>([]);
   const [fracoes, setFracoes] = useState<any[]>([]);
@@ -56,6 +56,20 @@ export function TransitadosClient() {
   const [fracaoFilter, setFracaoFilter] = useState<string>('all');
   const [tipoFilter, setTipoFilter] = useState<string>('all');
   const [estadoFilter, setEstadoFilter] = useState<string>('all');
+  const dividasFiltradas = useMemo(() => {
+    return dividas.filter((d) => {
+      // Fração
+      if (fracaoFilter !== "all" && d.fracao !== fracaoFilter) return false;
+
+      // Tipo
+      if (tipoFilter !== "all" && d.tipo !== tipoFilter) return false;
+
+      // Estado
+      if (estadoFilter !== "all" && d.estado !== estadoFilter) return false;
+
+      return true;
+    });
+  }, [dividas, fracaoFilter, tipoFilter, estadoFilter]);
 
   const fetchData = useCallback(() => {
     setLoading(true);
@@ -80,7 +94,7 @@ export function TransitadosClient() {
       })
       .catch((err: any) => console.error('Fetch error:', err))
       .finally(() => setLoading(false));
-  }, [ano]);
+  }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -295,7 +309,7 @@ export function TransitadosClient() {
 
   return (
     <div className="space-y-6">
-      <FadeIn>
+      {/* <FadeIn>
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
           <div>
             <h1 className="font-display text-2xl tracking-tight font-bold">Saldos Transitados</h1>
@@ -310,7 +324,7 @@ export function TransitadosClient() {
             </SelectContent>
           </Select>
         </div>
-      </FadeIn>
+      </FadeIn> */}
 
       {/* Summary cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -423,7 +437,7 @@ export function TransitadosClient() {
       </FadeIn>
 
       {/* Debts section */}
-      <FadeIn delay={0.3}>
+      {<FadeIn delay={0.3}>
         <Card style={{ boxShadow: 'var(--shadow-sm)' }}>
           <CardHeader>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -579,7 +593,7 @@ export function TransitadosClient() {
             )}
           </CardContent>
         </Card>
-      </FadeIn>
+      </FadeIn>}
 
       {/* Add debt dialog */}
       <Dialog open={showDividaDialog} onOpenChange={setShowDividaDialog}>
