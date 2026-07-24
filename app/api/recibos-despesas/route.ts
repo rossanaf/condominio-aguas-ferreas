@@ -1,8 +1,11 @@
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/db';
+import puppeteer from 'puppeteer';
+
 
 const categorias: Record<string, string> = {
   EDP: 'EDP',
@@ -89,49 +92,45 @@ function generateExpenseReceiptHTML(despesa: any, numeroDocumento: string): stri
 </html>`;
 }
 
-async function generatePdfFromHtml(html: string): Promise<Buffer> {
-  const createResponse = await fetch('https://apps.abacus.ai/api/createConvertHtmlToPdfRequest', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'APIKEY': process.env.ABACUSAI_API_KEY || '' },
-    body: JSON.stringify({
-      html_content: html,
-      pdf_options: { format: 'A4', margin: { top: '10mm', bottom: '10mm', left: '10mm', right: '10mm' } },
-    }),
-  });
+async function generatePdfFromHtml(
+  html: string,
+): Promise<Buffer> {
 
-  if (!createResponse.ok) {
-    const err = await createResponse.json().catch(() => ({}));
-    console.error('HTML2PDF create error:', err);
-    throw new Error(err?.error ?? 'Failed to create PDF request');
-  }
+  let browser;
 
-  const { request_id } = await createResponse.json();
-  if (!request_id) throw new Error('No request ID returned');
-
-  const maxAttempts = 60;
-  let attempts = 0;
-  while (attempts < maxAttempts) {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const statusResponse = await fetch('https://apps.abacus.ai/api/getConvertHtmlToPdfStatus', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'APIKEY': process.env.ABACUSAI_API_KEY || '' },
-      body: JSON.stringify({ request_id }),
+  try {
+    browser = await puppeteer.launch({
+      headless: true,
+      args: [
+        '--no-sandbox',
+        '--disable-setuid-sandbox'
+      ]
     });
-    const statusResult = await statusResponse.json();
-    const status = statusResult?.status || 'FAILED';
-    const result = statusResult?.result || null;
 
-    if (status === 'SUCCESS') {
-      if (result?.result) {
-        return Buffer.from(result.result, 'base64');
+    const page = await browser.newPage();
+
+    await page.setContent(html, {
+      waitUntil: 'load'
+    });
+
+    const pdfBuffer = await page.pdf({
+      format: 'A4',
+      printBackground: true,
+      margin: {
+        top: '10mm',
+        bottom: '10mm',
+        left: '10mm',
+        right: '10mm'
       }
-      throw new Error('PDF generation completed but no result data');
-    } else if (status === 'FAILED') {
-      throw new Error(result?.error || 'PDF generation failed');
+    });
+
+    return Buffer.from(pdfBuffer);
+
+  } finally {
+    if (browser) {
+      await browser.close();
     }
-    attempts++;
   }
-  throw new Error('PDF generation timed out');
 }
 
 export async function POST(request: Request) {
@@ -158,7 +157,7 @@ export async function POST(request: Request) {
     const html = generateExpenseReceiptHTML(despesa, numeroDocumento);
     const pdfBuffer = await generatePdfFromHtml(html);
 
-    return new NextResponse(pdfBuffer, {
+    return new NextResponse(new Uint8Array(pdfBuffer), {
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${numeroDocumento}.pdf"`,
